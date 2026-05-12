@@ -1,15 +1,5 @@
 # Clash for AI
 
-> This project has moved.
->
-> Clash for AI has been restarted as **AI Relay Box**.
->
-> New repository: https://github.com/xiaoyuandev/ai-relay-box
->
-> New website: https://www.airelaybox.com
->
-> This repository is kept for historical reference and will not receive new feature development.
-
 [English README](./README.md) | [中文 README](./README.zh-CN.md)
 
 <a href="https://www.clashforai.com/" target="_blank" rel="noopener noreferrer">Public Docs</a> | <a href="https://www.clashforai.com/deep-link-import/" target="_blank" rel="noopener noreferrer">Deep Link Import Guide</a>
@@ -163,6 +153,7 @@ Use it to:
 1. Copy ready-to-use local endpoint values
 2. Run one-click setup for supported tools such as Codex CLI and Claude Code
 3. Follow guided setup for tools like Cursor, Cherry Studio, and SDK scripts
+4. Drag supported models into Claude Code model slots, then switch between them in Claude Code with the `/model` command
 
 ### 4. Logs
 
@@ -251,6 +242,7 @@ The `Tools` page provides:
 1. Copy-ready connection values
 2. One-click setup for Codex CLI and Claude Code
 3. Setup guidance for tools such as Cursor, Cherry Studio, and SDK scripts
+4. Drag-and-drop model mapping for Claude Code model slots, so you can switch mapped models in Claude Code with the `/model` command
 
 ### CLI Tools
 
@@ -403,9 +395,21 @@ If the `Open` action still does not appear, use:
 3. Scroll to the security warning area for Clash for AI
 4. Click `Open Anyway`
 
+If you are comfortable with the command line and have confirmed the app came from the official release page, you can also remove the macOS quarantine attribute with `xattr`:
+
+```bash
+sudo xattr -rd com.apple.quarantine "/Applications/Clash for AI.app"
+```
+
+After that, launch `Clash for AI.app` from Finder or Launchpad.
+
 After the first successful open, later launches normally stop showing the same warning.
 
 If a `.pkg` installer is attached to the release, prefer the `.pkg` build over dragging a raw `.app` bundle manually.
+
+### Are request logs uploaded to any remote service?
+
+No. Request logs are stored locally on your machine only. Clash for AI does not upload request log records to any remote service.
 
 ## Local Development
 
@@ -426,6 +430,27 @@ Run the desktop app in development mode:
 ```bash
 pnpm dev
 ```
+
+Run the Web UI development mode:
+
+```bash
+pnpm dev:web
+```
+
+`pnpm dev:web` starts both the core service and the Web dev server. It is intended for local Web UI debugging. The default ports are:
+
+1. core API: `3456`
+2. local gateway runtime: `3457`
+
+If those ports conflict with other local programs, or if you want to use a locally built `ai-mini-gateway`, override them in the repository root `.env.local`:
+
+```bash
+HTTP_PORT=3456
+LOCAL_GATEWAY_RUNTIME_PORT=3457
+LOCAL_GATEWAY_RUNTIME_EXECUTABLE=/path/to/ai-mini-gateway/bin/ai-mini-gateway
+```
+
+These values are only local development helpers. If they are omitted, the default ports are used. Before starting, `pnpm dev:web` releases old listeners on those ports so core and local gateway restart with the latest local code.
 
 Build the desktop app:
 

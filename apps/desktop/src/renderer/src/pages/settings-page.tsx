@@ -74,6 +74,8 @@ interface SettingsPageProps {
   onCheckUpdates: () => Promise<void>;
   onDownloadUpdate: () => Promise<void>;
   onQuitAndInstallUpdate: () => Promise<void>;
+  onOpenReleasePage: () => Promise<void>;
+  onOpenProjectPage: () => Promise<void>;
   onCoreRestart: () => Promise<void>;
   onUpdateCorePort: (port: number) => Promise<void>;
   onUpdateLocalGatewayPort: (port: number) => Promise<void>;
@@ -158,6 +160,8 @@ export function SettingsPage({
   onCheckUpdates,
   onDownloadUpdate,
   onQuitAndInstallUpdate,
+  onOpenReleasePage,
+  onOpenProjectPage,
   onCoreRestart,
   onUpdateCorePort,
   onUpdateLocalGatewayPort,
@@ -374,8 +378,30 @@ export function SettingsPage({
     }
   }
 
+  async function handleOpenReleasePage() {
+    setUpdateBusy(true);
+    setFeedback(null);
+
+    try {
+      await onOpenReleasePage();
+    } catch (error) {
+      setFeedbackTone("error");
+      setFeedback(
+        error instanceof Error ? error.message : t("settings.feedback.updateOpenReleaseFailed")
+      );
+    } finally {
+      setUpdateBusy(false);
+    }
+  }
+
   const portLocked = desktopState?.config.apiPortSource === "env";
   const localGatewayPortLocked = desktopState?.config.localGatewayPortSource === "env";
+  const isMacOS = desktopState?.platform === "darwin";
+  const hasAvailableMacUpdate =
+    isMacOS &&
+    (desktopState?.updates.status === "available" ||
+      desktopState?.updates.status === "downloaded" ||
+      desktopState?.updates.status === "downloading");
   const updateStatusLabel =
     desktopState?.updates.status === "checking"
       ? t("updates.status.checking")
@@ -577,10 +603,6 @@ export function SettingsPage({
             meta={t("settings.meta.pid")}
           />
           <StatCard
-            label={t("settings.runtime.coreManaged")}
-            value={desktopState?.core.managed ? t("settings.runtime.yes") : t("settings.runtime.no")}
-          />
-          <StatCard
             label={t("settings.runtime.coreRunning")}
             value={desktopState?.core.running ? t("settings.runtime.yes") : t("settings.runtime.no")}
           />
@@ -627,6 +649,12 @@ export function SettingsPage({
           />
         </div>
 
+        {hasAvailableMacUpdate ? (
+          <p className="mt-4 rounded-2xl border [border-color:var(--success-border)] [background:var(--success-soft)] px-4 py-3 text-sm leading-6 text-[color:var(--success-text)]">
+            {t("settings.meta.macManualUpdate")}
+          </p>
+        ) : null}
+
         <div className={`${actionRowClass} mt-4`}>
           <button
             type="button"
@@ -638,29 +666,76 @@ export function SettingsPage({
               ? t("settings.button.checking")
               : t("settings.button.checkUpdates")}
           </button>
+          {isMacOS ? (
+            <button
+              type="button"
+              className={buttonClass(hasAvailableMacUpdate ? "primary" : "secondary")}
+              onClick={() => void handleOpenReleasePage()}
+              disabled={updateBusy || !hasAvailableMacUpdate}
+            >
+              {hasAvailableMacUpdate
+                ? t("settings.button.openReleasePage")
+                : t("settings.button.manualInstallOnly")}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className={buttonClass("secondary")}
+                onClick={() => void handleDownloadUpdate()}
+                disabled={
+                  updateBusy ||
+                  (desktopState?.updates.status !== "available" &&
+                    desktopState?.updates.status !== "downloading")
+                }
+              >
+                {desktopState?.updates.status === "downloading"
+                  ? t("settings.button.downloading", {
+                      progress: Math.round(desktopState.updates.progressPercent ?? 0)
+                    })
+                  : t("settings.button.downloadUpdate")}
+              </button>
+              <button
+                type="button"
+                className={buttonClass("primary")}
+                onClick={() => void handleQuitAndInstallUpdate()}
+                disabled={updateBusy || desktopState?.updates.status !== "downloaded"}
+              >
+                {t("settings.button.installUpdate")}
+              </button>
+            </>
+          )}
+        </div>
+      </section>
+
+      <section className={sectionCardClass}>
+        <div className={sectionHeadClass}>
+          <div className="space-y-1">
+            <h2 className={sectionTitleClass}>{t("settings.section.project")}</h2>
+            <p className={sectionMetaClass}>{t("settings.meta.project")}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className={iconBadgeClass}>
+              <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 .5A12 12 0 0 0 8.2 23.9c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.4-4-1.4-.5-1.3-1.2-1.6-1.2-1.6-1-.7.1-.7.1-.7 1.1.1 1.7 1.2 1.7 1.2 1 1.7 2.6 1.2 3.3.9.1-.7.4-1.2.7-1.5-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.6.1-3.2 0 0 1-.3 3.3 1.2A11.4 11.4 0 0 1 12 6.6c1 0 2 .1 3 .4 2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.9.1 3.2.8.9 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3c0 .3.2.7.8.6A12 12 0 0 0 12 .5" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <p className={fieldLabelClass}>{t("settings.project.github")}</p>
+              <p className={`${monoClass} mt-2 truncate text-xs`}>
+                https://github.com/xiaoyuandev/clash-for-ai
+              </p>
+            </div>
+          </div>
           <button
             type="button"
             className={buttonClass("secondary")}
-            onClick={() => void handleDownloadUpdate()}
-            disabled={
-              updateBusy ||
-              (desktopState?.updates.status !== "available" &&
-                desktopState?.updates.status !== "downloading")
-            }
+            onClick={() => void onOpenProjectPage()}
           >
-            {desktopState?.updates.status === "downloading"
-              ? t("settings.button.downloading", {
-                  progress: Math.round(desktopState.updates.progressPercent ?? 0)
-                })
-              : t("settings.button.downloadUpdate")}
-          </button>
-          <button
-            type="button"
-            className={buttonClass("primary")}
-            onClick={() => void handleQuitAndInstallUpdate()}
-            disabled={updateBusy || desktopState?.updates.status !== "downloaded"}
-          >
-            {t("settings.button.installUpdate")}
+            {t("settings.button.openProjectPage")}
           </button>
         </div>
       </section>

@@ -31,6 +31,7 @@ import {
   modalBackdropClass,
   modalPanelClass,
   metaClass,
+  monoClass,
   navButtonClass,
   pageShellClass,
   sectionMetaClass,
@@ -146,6 +147,19 @@ function readOptionalString(payload: Record<string, unknown>, keys: string[]) {
   }
 
   return "";
+}
+
+function maskImportAPIKey(value: string) {
+  const trimmed = value.trim();
+  if (trimmed.length <= 4) {
+    return "****";
+  }
+
+  if (trimmed.length <= 12) {
+    return `${trimmed.slice(0, trimmed.length - 4)}****`;
+  }
+
+  return `${trimmed.slice(0, 8)}••••${trimmed.slice(-4)}`;
 }
 
 function normalizeImportRequest(event: DeepLinkImportEvent): ImportRequest {
@@ -343,7 +357,14 @@ export default function App() {
 
     autoUpdateCheckStartedRef.current = true;
     const timeoutId = window.setTimeout(() => {
-      void window.desktopBridge.checkUpdates().catch(() => undefined);
+      void window.desktopBridge
+        .checkUpdates()
+        .then((nextUpdates) => {
+          setDesktopState((current) =>
+            current ? { ...current, updates: nextUpdates } : current
+          );
+        })
+        .catch(() => undefined);
     }, 4000);
 
     return () => {
@@ -455,6 +476,14 @@ export default function App() {
 
     const nextUpdates = await window.desktopBridge.quitAndInstallUpdate();
     setDesktopState((current) => (current ? { ...current, updates: nextUpdates } : current));
+  }
+
+  async function handleOpenReleasePage() {
+    if (!window.desktopBridge) {
+      return;
+    }
+
+    await window.desktopBridge.openReleasePage();
   }
 
   async function handleConfirmImport() {
@@ -584,13 +613,9 @@ export default function App() {
                 </div>
               ) : null}
               <div>
-                <p className={fieldLabelClass}>
-                  {pendingImportRequest.resource === "provider"
-                    ? t("providers.form.apiKey")
-                    : t("models.form.apiKey")}
-                </p>
-                <p className="mt-1 text-sm text-[color:var(--color-text)]">
-                  {t("importDeepLink.fields.apiKeyMasked")}
+                <p className={fieldLabelClass}>{t("importDeepLink.fields.apiKeyMasked")}</p>
+                <p className={`${monoClass} mt-1 break-all text-sm text-[color:var(--color-text)]`}>
+                  {maskImportAPIKey(pendingImportRequest.data.apiKey)}
                 </p>
               </div>
             </div>
@@ -733,16 +758,24 @@ export default function App() {
                 <div className="mt-2">
                   <button
                     type="button"
-                    className={buttonClass(updates.status === "downloaded" ? "primary" : "secondary")}
+                    className={buttonClass(
+                      desktopState?.platform === "darwin" || updates.status === "downloaded"
+                        ? "primary"
+                        : "secondary"
+                    )}
                     onClick={() =>
-                      void (updates.status === "downloaded"
-                        ? handleQuitAndInstallUpdate()
-                        : handleDownloadUpdate())
+                      void (desktopState?.platform === "darwin"
+                        ? handleOpenReleasePage()
+                        : updates.status === "downloaded"
+                          ? handleQuitAndInstallUpdate()
+                          : handleDownloadUpdate())
                     }
                   >
-                    {updates.status === "downloaded"
-                      ? t("settings.button.installUpdate")
-                      : t("settings.button.downloadUpdate")}
+                    {desktopState?.platform === "darwin"
+                      ? t("settings.button.openReleasePage")
+                      : updates.status === "downloaded"
+                        ? t("settings.button.installUpdate")
+                        : t("settings.button.downloadUpdate")}
                   </button>
                 </div>
               </div>
@@ -863,6 +896,16 @@ export default function App() {
               }}
               onQuitAndInstallUpdate={async () => {
                 await handleQuitAndInstallUpdate();
+              }}
+              onOpenReleasePage={async () => {
+                await handleOpenReleasePage();
+              }}
+              onOpenProjectPage={async () => {
+                if (!window.desktopBridge) {
+                  return;
+                }
+
+                await window.desktopBridge.openProjectPage();
               }}
               onCoreRestart={async () => {
                 if (!window.desktopBridge) {
