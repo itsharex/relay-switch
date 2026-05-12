@@ -4,6 +4,8 @@
 
 <a href="https://www.clashforai.com/" target="_blank" rel="noopener noreferrer">Public Docs</a> | <a href="https://www.clashforai.com/deep-link-import/" target="_blank" rel="noopener noreferrer">Deep Link Import Guide</a> | <a href="https://trendshift.io/repositories/27531" target="_blank" rel="noopener noreferrer">GitHub Trending</a>
 
+<a href="https://www.producthunt.com/products/github-376?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-github-986be850-3079-4734-96bc-d67b24532f07" target="_blank" rel="noopener noreferrer"><img alt="GitHub - Switching and management of major relay API services | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1145071&amp;theme=light&amp;t=1778578640911"></a>
+
 Clash for AI brings multiple AI relay APIs, native model sources, and local AI tools behind one local endpoint.
 
 If you switch between models or provider configuration across Cursor, Kiro, Cherry Studio, Codex, Claude Code, OpenClaw, Hermes Agent, or your own scripts, Clash for AI lets you configure one local address once and switch upstreams from a single UI.
@@ -12,6 +14,7 @@ If you switch between models or provider configuration across Cursor, Kiro, Cher
 
 - [Why Clash for AI](#why-clash-for-ai)
 - [What You Can Do](#what-you-can-do)
+- [Screenshot](#screenshot)
 - [Installation & Quick Start](#installation--quick-start)
 - [Desktop Modules](#desktop-modules)
 - [Usage Guide](#usage-guide)
@@ -45,6 +48,18 @@ After that, switching models, relay providers, or local model sources happens in
 3. Expose one local endpoint at `http://127.0.0.1:3456` for CLI tools, desktop clients, coding tools, and scripts
 4. Manage providers, models, health checks, and request logs from a visual UI instead of editing config files by hand
 5. Import Provider or Model configuration from the web with Deep Link, starting from the [Deep Link demo](https://www.clashforai.com/deeplink.html)
+
+## Screenshot
+
+<p align="center">
+  <img src="./docs/images/readme/quick-start-provider-form.png" style="width: 49%; height: auto;">
+  <img src="./docs/images/readme/connectatool.png" style="width: 49%; height: auto;">
+</p>
+
+<p align="center">
+  <img src="./docs/images/readme/models-config.png" style="width: 49%; height: auto;">
+  <img src="./docs/images/readme/tools-config.png" style="width: 49%; height: auto;">
+</p>
 
 ## Installation & Quick Start
 
@@ -137,12 +152,12 @@ Notes:
 
 If you deploy Clash for AI on a remote Linux server, there are usually two access patterns:
 
-Option 1: SSH port forwarding
+Option 1: SSH tunnel for Web UI access
 
 Run this locally:
 
 ```bash
-ssh -L 3456:127.0.0.1:3456 your-server
+ssh -N -L 3456:127.0.0.1:3456 user@host
 ```
 
 Then open this in your local browser:
@@ -197,18 +212,6 @@ Try it here:
 ```text
 https://www.clashforai.com/deeplink.html
 ```
-
-## Screenshot
-
-<p align="center">
-  <img src="./docs/images/readme/quick-start-provider-form.png" style="width: 49%; height: auto;">
-  <img src="./docs/images/readme/connectatool.png" style="width: 49%; height: auto;">
-</p>
-
-<p align="center">
-  <img src="./docs/images/readme/models-config.png" style="width: 49%; height: auto;">
-  <img src="./docs/images/readme/tools-config.png" style="width: 49%; height: auto;">
-</p>
 
 ## Desktop Modules
 
