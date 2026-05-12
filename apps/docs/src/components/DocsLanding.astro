@@ -35,6 +35,7 @@ interface Props {
 const props = Astro.props as Props;
 import logo from "../assets/logo.svg";
 import rootPackage from "../../../../package.json";
+import { getAlternateLinks } from "./seo-links";
 import "../styles/site.css";
 const withBase = (path: string) => {
   const base = (import.meta.env.BASE_URL || "/").replace(/\/?$/, "/");
@@ -43,31 +44,30 @@ const withBase = (path: string) => {
 };
 const siteUrl = new URL(Astro.url.pathname, Astro.site ?? Astro.url.origin);
 const canonicalUrl = siteUrl.toString();
+const alternateLinks = getAlternateLinks(Astro.site, Astro.url.pathname);
 const releaseVersion = rootPackage.version;
-const releaseTag = `v${releaseVersion}`;
-const releaseBase = `https://github.com/xiaoyuandev/clash-for-ai/releases/download/${releaseTag}`;
 const latestReleaseHref = "https://github.com/xiaoyuandev/clash-for-ai/releases/latest";
 const installCommand = "curl -fsSL https://raw.githubusercontent.com/xiaoyuandev/clash-for-ai/main/scripts/install.sh | bash";
 const downloadLinks = [
   {
     label: props.lang === "zh-CN" ? "macOS Apple Silicon" : "macOS Apple Silicon",
-    meta: props.lang === "zh-CN" ? "DMG, arm64" : "DMG, arm64",
-    href: `${releaseBase}/Clash-for-AI-${releaseVersion}-arm64.dmg`
+    meta: props.lang === "zh-CN" ? "在 Release 页面选择 DMG, arm64" : "Choose DMG, arm64 from Releases",
+    href: latestReleaseHref
   },
   {
     label: props.lang === "zh-CN" ? "macOS Intel" : "macOS Intel",
-    meta: props.lang === "zh-CN" ? "DMG, x64" : "DMG, x64",
-    href: `${releaseBase}/Clash-for-AI-${releaseVersion}-x64.dmg`
+    meta: props.lang === "zh-CN" ? "在 Release 页面选择 DMG, x64" : "Choose DMG, x64 from Releases",
+    href: latestReleaseHref
   },
   {
     label: props.lang === "zh-CN" ? "Windows" : "Windows",
-    meta: props.lang === "zh-CN" ? "安装程序, x64" : "Installer, x64",
-    href: `${releaseBase}/Clash-for-AI-${releaseVersion}-x64-setup.exe`
+    meta: props.lang === "zh-CN" ? "在 Release 页面选择安装程序, x64" : "Choose Installer, x64 from Releases",
+    href: latestReleaseHref
   },
   {
     label: props.lang === "zh-CN" ? "Linux Desktop" : "Linux Desktop",
-    meta: props.lang === "zh-CN" ? "AppImage, x64" : "AppImage, x64",
-    href: `${releaseBase}/Clash-for-AI-${releaseVersion}-x64.AppImage`
+    meta: props.lang === "zh-CN" ? "在 Release 页面选择 AppImage, x64" : "Choose AppImage, x64 from Releases",
+    href: latestReleaseHref
   }
 ];
 const seoMeta =
@@ -134,22 +134,44 @@ const seoMeta =
           "Switch upstream services without editing every tool's Base URL and model configuration"
         ],
       };
+const publisher = {
+  "@type": "Person",
+  "@id": "https://github.com/xiaoyuandev#person",
+  name: "xiaoyuandev",
+  url: "https://github.com/xiaoyuandev"
+};
 const structuredData = {
   "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: "Clash for AI",
-  applicationCategory: "DeveloperApplication",
-  operatingSystem: ["macOS", "Windows", "Linux"],
-  description: seoMeta.description,
-  url: canonicalUrl,
-  downloadUrl: latestReleaseHref,
-  softwareVersion: releaseVersion,
-  codeRepository: "https://github.com/xiaoyuandev/clash-for-ai",
-  offers: {
-    "@type": "Offer",
-    price: "0",
-    priceCurrency: "USD"
-  }
+  "@graph": [
+    publisher,
+    {
+      "@type": "WebSite",
+      "@id": `${canonicalUrl}#website`,
+      name: "Clash for AI Docs",
+      url: canonicalUrl,
+      inLanguage: props.lang,
+      publisher
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": `${canonicalUrl}#software`,
+      name: "Clash for AI",
+      applicationCategory: "DeveloperApplication",
+      operatingSystem: ["macOS", "Windows", "Linux"],
+      description: seoMeta.description,
+      url: canonicalUrl,
+      downloadUrl: latestReleaseHref,
+      softwareVersion: releaseVersion,
+      codeRepository: "https://github.com/xiaoyuandev/clash-for-ai",
+      inLanguage: props.lang,
+      publisher,
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "USD"
+      }
+    }
+  ]
 };
 
 const galleryImages = [
@@ -185,6 +207,9 @@ const galleryImages = [
     <meta name="description" content={seoMeta.description} />
     <meta name="keywords" content={seoMeta.keywords} />
     <link rel="canonical" href={canonicalUrl} />
+    {alternateLinks.map((link) => (
+      <link rel="alternate" hreflang={link.hreflang} href={link.href} />
+    ))}
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Clash for AI" />
     <meta property="og:title" content={seoMeta.title} />
