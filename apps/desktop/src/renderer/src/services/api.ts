@@ -1,4 +1,4 @@
-import type { Provider } from "../types/provider";
+import type { CodexModelCatalogState, CodexModelEntry, Provider } from "../types/provider";
 import type { RequestLog } from "../types/request-log";
 import type { ProviderModel } from "../types/provider-model";
 import type { SelectedModel } from "../types/selected-model";
@@ -326,6 +326,62 @@ export async function updateSelectedProviderModels(
       body: JSON.stringify(items)
     },
     "Update selected models failed"
+  );
+}
+
+export async function getProviderCodexModels(
+  id: string,
+  apiBase?: string
+): Promise<CodexModelEntry[]> {
+  return fetchJson<CodexModelEntry[]>(
+    `${getApiBase(apiBase)}/api/providers/${id}/codex-models`,
+    {},
+    "Codex models request failed"
+  );
+}
+
+export async function updateProviderCodexModels(
+  id: string,
+  items: CodexModelEntry[],
+  apiBase?: string
+): Promise<CodexModelEntry[]> {
+  return fetchJson<CodexModelEntry[]>(
+    `${getApiBase(apiBase)}/api/providers/${id}/codex-models`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(items)
+    },
+    "Update Codex models failed"
+  );
+}
+
+export async function getCodexModelCatalogState(
+  apiBase?: string
+): Promise<CodexModelCatalogState> {
+  return fetchJson<CodexModelCatalogState>(
+    `${getApiBase(apiBase)}/api/tools/codex-model-catalog`,
+    {},
+    "Codex model catalog request failed"
+  );
+}
+
+export async function updateCodexModelCatalogState(
+  patch: Partial<Pick<CodexModelCatalogState, "enabled" | "hide_official_models">>,
+  apiBase?: string
+): Promise<CodexModelCatalogState> {
+  return fetchJson<CodexModelCatalogState>(
+    `${getApiBase(apiBase)}/api/tools/codex-model-catalog`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(patch)
+    },
+    "Update Codex model catalog failed"
   );
 }
 

@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/xiaoyuandev/relay-switch/core/internal/credential"
@@ -380,6 +382,149 @@ func TestProviderModelTestEndpoint(t *testing.T) {
 	}
 }
 
+func TestProviderCodexModelsSyncsActiveProviderCatalog(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	handler := newTestRouter(t, nil, localgateway.RuntimeConfig{
+		Host:    "127.0.0.1",
+		Port:    3457,
+		DataDir: filepath.Join(t.TempDir(), "runtime"),
+	})
+
+	first := createProviderViaAPI(t, handler, "First Provider")
+	second := createProviderViaAPI(t, handler, "Second Provider")
+
+	activateReq := httptest.NewRequest(http.MethodPost, "/api/providers/"+first.ID+"/activate", nil)
+	activateRec := httptest.NewRecorder()
+	handler.ServeHTTP(activateRec, activateReq)
+	if activateRec.Code != http.StatusOK {
+		t.Fatalf("unexpected first activate status: %d body=%s", activateRec.Code, activateRec.Body.String())
+	}
+
+	nonActiveReq := httptest.NewRequest(http.MethodPut, "/api/providers/"+second.ID+"/codex-models", bytes.NewBufferString(`[{"model_id":"second-model","display_name":"Second Model","enabled":true,"position":0}]`))
+	nonActiveRec := httptest.NewRecorder()
+	handler.ServeHTTP(nonActiveRec, nonActiveReq)
+	if nonActiveRec.Code != http.StatusOK {
+		t.Fatalf("unexpected non-active codex models status: %d body=%s", nonActiveRec.Code, nonActiveRec.Body.String())
+	}
+	if models := readRouterCodexCatalogModels(t, filepath.Join(home, ".codex", "relay-switch-models.json")); len(models) != 0 {
+		t.Fatalf("non-active provider should not sync relay models: %+v", models)
+	}
+
+	activeReq := httptest.NewRequest(http.MethodPut, "/api/providers/"+first.ID+"/codex-models", bytes.NewBufferString(`[{"model_id":"first-model","display_name":"First Model","enabled":true,"position":0}]`))
+	activeRec := httptest.NewRecorder()
+	handler.ServeHTTP(activeRec, activeReq)
+	if activeRec.Code != http.StatusOK {
+		t.Fatalf("unexpected active codex models status: %d body=%s", activeRec.Code, activeRec.Body.String())
+	}
+	models := readRouterCodexCatalogModels(t, filepath.Join(home, ".codex", "relay-switch-models.json"))
+	if len(models) != 1 || models[0]["slug"] != "first-model" {
+		t.Fatalf("active provider should sync relay models: %+v", models)
+	}
+
+	switchReq := httptest.NewRequest(http.MethodPost, "/api/providers/"+second.ID+"/activate", nil)
+	switchRec := httptest.NewRecorder()
+	handler.ServeHTTP(switchRec, switchReq)
+	if switchRec.Code != http.StatusOK {
+		t.Fatalf("unexpected second activate status: %d body=%s", switchRec.Code, switchRec.Body.String())
+	}
+	models = readRouterCodexCatalogModels(t, filepath.Join(home, ".codex", "relay-switch-models.json"))
+	if len(models) != 1 || models[0]["slug"] != "second-model" {
+		t.Fatalf("provider activation should sync new active provider models: %+v", models)
+	}
+}
+
+func TestCodexModelCatalogAPIReadsAndWritesConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	handler := newTestRouter(t, nil, localgateway.RuntimeConfig{
+		Host:    "127.0.0.1",
+		Port:    3457,
+		DataDir: filepath.Join(t.TempDir(), "runtime"),
+	})
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/tools/codex-model-catalog", nil)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("unexpected initial get status: %d body=%s", getRec.Code, getRec.Body.String())
+	}
+	var state struct {
+		Enabled            bool   `json:"enabled"`
+		CatalogPath        string `json:"catalog_path"`
+		HideOfficialModels bool   `json:"hide_official_models"`
+	}
+	if err := json.Unmarshal(getRec.Body.Bytes(), &state); err != nil {
+		t.Fatalf("decode initial state: %v", err)
+	}
+	if state.Enabled {
+		t.Fatalf("initial state should be disabled: %+v", state)
+	}
+	if state.HideOfficialModels {
+		t.Fatalf("initial state should not hide official models: %+v", state)
+	}
+
+	hideReq := httptest.NewRequest(http.MethodPut, "/api/tools/codex-model-catalog", bytes.NewBufferString(`{"hide_official_models":true}`))
+	hideRec := httptest.NewRecorder()
+	handler.ServeHTTP(hideRec, hideReq)
+	if hideRec.Code != http.StatusOK {
+		t.Fatalf("unexpected hide status: %d body=%s", hideRec.Code, hideRec.Body.String())
+	}
+	if err := json.Unmarshal(hideRec.Body.Bytes(), &state); err != nil {
+		t.Fatalf("decode hide state: %v", err)
+	}
+	if state.Enabled {
+		t.Fatalf("hide-only update should not enable model catalog: %+v", state)
+	}
+	if !state.HideOfficialModels {
+		t.Fatalf("hide official models should be enabled: %+v", state)
+	}
+	if !strings.Contains(readRouterText(t, filepath.Join(home, ".codex", "config.toml")), `relay_switch_hide_official_models = true`) {
+		t.Fatalf("config should contain hide official models")
+	}
+	if models := readRouterCodexCatalogModels(t, filepath.Join(home, ".codex", "relay-switch-model-catalog.json")); len(models) == 0 {
+		t.Fatal("hide official update should write relay catalog")
+	}
+
+	putReq := httptest.NewRequest(http.MethodPut, "/api/tools/codex-model-catalog", bytes.NewBufferString(`{"enabled":true}`))
+	putRec := httptest.NewRecorder()
+	handler.ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("unexpected enable status: %d body=%s", putRec.Code, putRec.Body.String())
+	}
+	if !strings.Contains(readRouterText(t, filepath.Join(home, ".codex", "config.toml")), `model_catalog_json = "`) {
+		t.Fatalf("config should contain model_catalog_json after enable")
+	}
+	if !strings.Contains(readRouterText(t, filepath.Join(home, ".codex", "config.toml")), `relay_switch_hide_official_models = true`) {
+		t.Fatalf("enabled-only update should keep hide official models")
+	}
+	if models := readRouterCodexCatalogModels(t, filepath.Join(home, ".codex", "relay-switch-models.json")); len(models) != 0 {
+		t.Fatalf("enable should write empty relay models without active codex models: %+v", models)
+	}
+	if models := readRouterCodexCatalogModels(t, filepath.Join(home, ".codex", "relay-switch-model-catalog.json")); len(models) == 0 {
+		t.Fatal("enable should write relay catalog")
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodPut, "/api/tools/codex-model-catalog", bytes.NewBufferString(`{"enabled":false}`))
+	deleteRec := httptest.NewRecorder()
+	handler.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusOK {
+		t.Fatalf("unexpected disable status: %d body=%s", deleteRec.Code, deleteRec.Body.String())
+	}
+	if strings.Contains(readRouterText(t, filepath.Join(home, ".codex", "config.toml")), `model_catalog_json = `) {
+		t.Fatalf("config should remove model_catalog_json after disable")
+	}
+	if !strings.Contains(readRouterText(t, filepath.Join(home, ".codex", "config.toml")), `relay_switch_hide_official_models = true`) {
+		t.Fatalf("disable enabled should not clear hide official models")
+	}
+	if !routerFileExists(filepath.Join(home, ".codex", "relay-switch-models.json")) {
+		t.Fatal("disable should keep relay models")
+	}
+	if !routerFileExists(filepath.Join(home, ".codex", "relay-switch-model-catalog.json")) {
+		t.Fatal("disable should keep relay catalog")
+	}
+}
+
 func TestManagedLocalGatewayProviderActivationRequiresHealthyRuntime(t *testing.T) {
 	t.Parallel()
 
@@ -421,7 +566,7 @@ func TestManagedLocalGatewayProviderActivationRequiresHealthyRuntime(t *testing.
 		t.Fatalf("ensure managed local gateway: %v", err)
 	}
 
-	handler := NewRouter(providerService, healthService, nil, manager, tooling.NewService(providerService), 3456, "", gatewayHandler)
+	handler := NewRouter(providerService, healthService, nil, manager, tooling.NewService(providerService, t.TempDir()), 3456, "", gatewayHandler)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/providers/provider-local-gateway/activate", nil)
 	rec := httptest.NewRecorder()
@@ -438,6 +583,61 @@ func TestManagedLocalGatewayProviderActivationRequiresHealthyRuntime(t *testing.
 	if payload["error"] != string(localgateway.AdapterErrorConflict) {
 		t.Fatalf("unexpected activation error payload: %+v", payload)
 	}
+}
+
+func createProviderViaAPI(t *testing.T, handler http.Handler, name string) provider.Provider {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/providers", bytes.NewBufferString(`{
+		"name":"`+name+`",
+		"base_url":"https://api.example.com/v1",
+		"api_key":"sk-test",
+		"auth_mode":"bearer",
+		"extra_headers":{},
+		"claude_code_model_map":{"opus":"","sonnet":"","haiku":""}
+	}`))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("unexpected provider create status: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var created provider.Provider
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created provider: %v", err)
+	}
+	return created
+}
+
+func readRouterCodexCatalogModels(t *testing.T, path string) []map[string]any {
+	t.Helper()
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read catalog %s: %v", path, err)
+	}
+	var payload struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		t.Fatalf("decode catalog %s: %v", path, err)
+	}
+	return payload.Models
+}
+
+func readRouterText(t *testing.T, path string) string {
+	t.Helper()
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(content)
+}
+
+func routerFileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func assertLocalGatewaySourceResponseIncludesAPIKey(t *testing.T, body []byte) {
@@ -501,7 +701,7 @@ func newTestRouterWithLogs(t *testing.T, adapter localgateway.GatewayAdapter, ru
 	}
 	manager := localgateway.NewManager(localService, adapter, runtime)
 
-	return NewRouter(providerService, healthService, loggingService, manager, tooling.NewService(providerService), 3456, "", gatewayHandler), loggingService
+	return NewRouter(providerService, healthService, loggingService, manager, tooling.NewService(providerService, t.TempDir()), 3456, "", gatewayHandler), loggingService
 }
 
 type localgatewaySpyAdapter struct {

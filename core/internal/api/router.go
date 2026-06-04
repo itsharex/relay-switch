@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -58,6 +59,7 @@ func NewRouter(
 	mux.HandleFunc("/api/release", router.handleRelease)
 	mux.HandleFunc("/api/runtime", router.handleRuntime)
 	mux.HandleFunc("/api/tools", router.handleTools)
+	mux.HandleFunc("/api/tools/codex-model-catalog", router.handleCodexModelCatalog)
 	mux.HandleFunc("/api/tools/", router.handleToolActions)
 	mux.HandleFunc("/api/local-gateway/runtime", router.handleLocalGatewayRuntime)
 	mux.HandleFunc("/api/local-gateway/capabilities", router.handleLocalGatewayCapabilities)
@@ -270,6 +272,41 @@ func (r *Router) handleTools(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, items)
 }
 
+func (r *Router) handleCodexModelCatalog(w http.ResponseWriter, req *http.Request) {
+	if r.tools == nil {
+		http.Error(w, "tooling service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	switch req.Method {
+	case http.MethodGet:
+		state, err := r.tools.GetCodexModelCatalogState()
+		if err != nil {
+			http.Error(w, "failed to inspect codex model catalog", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, state)
+	case http.MethodPut:
+		var input struct {
+			Enabled            *bool `json:"enabled"`
+			HideOfficialModels *bool `json:"hide_official_models"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&input); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		state, err := r.tools.UpdateCodexModelCatalogState(req.Context(), input.Enabled, input.HideOfficialModels)
+		if err != nil {
+			http.Error(w, "failed to update codex model catalog", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, state)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func (r *Router) handleToolActions(w http.ResponseWriter, req *http.Request) {
 	if r.tools == nil {
 		http.Error(w, "tooling service unavailable", http.StatusServiceUnavailable)
@@ -333,6 +370,7 @@ func (r *Router) handleProviderActions(w http.ResponseWriter, req *http.Request)
 			return
 		}
 
+		r.syncCodexModelCatalog(req.Context())
 		writeJSON(w, http.StatusOK, item)
 	case len(parts) == 2 && parts[1] == "models" && req.Method == http.MethodGet:
 		items, err := r.providers.FetchModels(req.Context(), parts[0])
@@ -398,6 +436,39 @@ func (r *Router) handleProviderActions(w http.ResponseWriter, req *http.Request)
 		}
 
 		writeJSON(w, http.StatusOK, items)
+	case len(parts) == 2 && parts[1] == "codex-models" && req.Method == http.MethodGet:
+		items, err := r.providers.ListCodexModels(req.Context(), parts[0])
+		if err != nil {
+			if errors.Is(err, provider.ErrProviderNotFound) {
+				http.Error(w, "provider not found", http.StatusNotFound)
+				return
+			}
+
+			http.Error(w, "failed to list codex models", http.StatusInternalServerError)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, items)
+	case len(parts) == 2 && parts[1] == "codex-models" && req.Method == http.MethodPut:
+		var input []provider.CodexModel
+		if err := json.NewDecoder(req.Body).Decode(&input); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		items, err := r.providers.ReplaceCodexModels(req.Context(), parts[0], input)
+		if err != nil {
+			if errors.Is(err, provider.ErrProviderNotFound) {
+				http.Error(w, "provider not found", http.StatusNotFound)
+				return
+			}
+
+			http.Error(w, "failed to update codex models", http.StatusInternalServerError)
+			return
+		}
+
+		r.syncCodexModelCatalogForProvider(req.Context(), parts[0])
+		writeJSON(w, http.StatusOK, items)
 	case len(parts) == 2 && parts[1] == "healthcheck" && req.Method == http.MethodPost:
 		result, err := r.health.CheckProvider(req.Context(), parts[0])
 		if err != nil {
@@ -457,6 +528,27 @@ func (r *Router) handleProviderActions(w http.ResponseWriter, req *http.Request)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (r *Router) syncCodexModelCatalog(ctx context.Context) {
+	if r.tools == nil {
+		return
+	}
+	if err := r.tools.SyncCodexModelCatalog(ctx); err != nil {
+		log.Printf("[codex] model catalog sync failed: %v", err)
+	}
+}
+
+func (r *Router) syncCodexModelCatalogForProvider(ctx context.Context, providerID string) {
+	active, err := r.providers.GetActive(ctx)
+	if err != nil {
+		log.Printf("[codex] check active provider for catalog sync failed: %v", err)
+		return
+	}
+	if active == nil || active.ID != providerID {
+		return
+	}
+	r.syncCodexModelCatalog(ctx)
 }
 
 func (r *Router) handleLocalGatewayRuntime(w http.ResponseWriter, req *http.Request) {
